@@ -23,7 +23,19 @@ const error = (code, retry='unsafe', delivery='delivery_uncertain') =>
   ({ok:false,error:{code,message:'試験の失敗',disposition:{retry,delivery}}});
 let result = {ok:true,data:{disposition:{delivery:'delivered_verified',retry:'unsafe'}}};
 const clicked = () => require('node:fs').readFileSync(process.env.JEV_TEST_LOG,'utf8').includes('"command":"click"');
+const reads = () => require('node:fs').readFileSync(process.env.JEV_TEST_LOG,'utf8').split('"command":"snapshot"').length - 1;
+const cut = (children) => ({ok:true,data:{window:{title:'試験'},complete:false,truncated:true,nodes_observed:3,tree:{role:'window',children}}});
 if (command === 'snapshot' && mode === 'window_closed' && clicked()) result = error('WINDOW_NOT_FOUND','safe','not_delivered');
+else if (command === 'snapshot' && mode === 'unreadable_after' && clicked()) result = error('TIMEOUT','unknown','unknown');
+else if (command === 'snapshot' && (mode === 'never_whole' || (mode === 'cold_cut' && reads() === 1))) result = cut([]);
+else if (command === 'snapshot' && mode === 'partly_read') result = cut([{ref_id:'@s1:e1',role:'button',name:'試験ボタン',available_actions:['Click']}]);
+else if (command === 'snapshot' && mode === 'cold_timeout' && reads() <= 2) result = error('TIMEOUT','unknown','unknown');
+else if (command === 'snapshot' && mode === 'sheet_cut' && args.includes('--surface')) result = error('TIMEOUT','unknown','unknown');
+else if (command === 'snapshot' && mode === 'sheet_cut') result = {ok:true,data:{window:{title:'試験'},complete:true,tree:{
+  role:'window',children:[
+    {ref_id:'@s1:e1',role:'button',name:'試験ボタン',available_actions:['Click']},
+    {role:'sheet',children:[{ref_id:'@s1:e2',role:'button',name:'保存',available_actions:['Click']}]}
+  ]}}};
 else if (command === 'snapshot') result = {ok:true,data:{window:{title:'試験'},tree:{
   role:'window',children:[
     {ref_id:'@s1:e1',role:'button',name:'試験ボタン',available_actions:['Click']},
@@ -46,8 +58,8 @@ let calls=0;
 globalThis.fetch=async (_url,options)=>{
   calls++;
   const body=JSON.parse(options.body), mode=process.env.JEV_TEST_MODE;
-  const operation=mode==='wait'?(calls<=3?'WAIT':'DONE'):mode==='done'?'DONE':
-    mode==='blocked'?'BLOCKED':mode==='click_error'||mode==='window_closed'?'CLICK':mode==='paste_correct'&&calls>1?'DONE':'TYPE_TEXT';
+  const operation=mode==='wait'?(calls<=3?'WAIT':'DONE'):mode==='done'||mode==='partly_read'||mode==='sheet_cut'||mode.startsWith('cold_')?'DONE':
+    mode==='blocked'?'BLOCKED':mode==='click_error'||mode==='window_closed'||mode==='unreadable_after'?'CLICK':mode==='paste_correct'&&calls>1?'DONE':'TYPE_TEXT';
   const answers={};
   for (const [id,question] of Object.entries(body.questions)) {
     const ids=Object.keys(question.criteria);
@@ -127,6 +139,47 @@ try {
   assert.equal(closed.events.find(event => event.turn).turn.ok, true);
   const afterClick = closed.commands.slice(closed.commands.findIndex(command => command.command === "click") + 1);
   assert.equal(afterClick.filter(command => command.command === "snapshot").length, 1);
+
+  const depth = (command) => command.args.includes("--max-depth");
+  const coldCut = run("cold_cut");
+  assert.equal(coldCut.status, 0, "a read cut short is taken again, not reported as an empty screen");
+  assert.equal(coldCut.stop.stop, "done");
+  assert.equal(coldCut.commands.filter(command => command.command === "snapshot").length, 2);
+  assert.equal(coldCut.commands.some(depth), false);
+
+  const coldTimeout = run("cold_timeout");
+  assert.equal(coldTimeout.status, 0);
+  assert.equal(coldTimeout.stop.stop, "done");
+  assert.equal(coldTimeout.commands.filter(command => command.command === "snapshot").length, 3);
+  assert.equal(coldTimeout.commands.some(depth), false);
+
+  const neverWhole = run("never_whole");
+  assert.equal(neverWhole.status, 1);
+  assert.equal(neverWhole.stop.stop, "the screen was only partly read, and nothing in that part can be acted on");
+  assert.equal(neverWhole.stop.screen.incomplete, true);
+  assert.deepEqual(neverWhole.commands.map(command => command.command), ["snapshot", "snapshot", "snapshot"]);
+  assert.equal(neverWhole.commands.some(depth), false);
+
+  const partlyRead = run("partly_read");
+  assert.equal(partlyRead.status, 0, "a tree that stays incomplete is still read, as it was before");
+  assert.equal(partlyRead.stop.screen.incomplete, true, "and the stop says the screen was not whole");
+  assert.equal(partlyRead.commands.filter(command => command.command === "snapshot").length, 3);
+  assert.equal("incomplete" in run("done").stop.screen, false);
+
+  const sheetCut = run("sheet_cut");
+  assert.equal(sheetCut.stop.screen.surface, "sheet");
+  assert.equal(sheetCut.stop.screen.incomplete, true, "a sheet that could not be read in time is not passed off as read");
+  assert.equal(sheetCut.commands.filter(command => command.args.includes("--surface")).length, 3);
+
+  const lost = run("unreadable_after");
+  assert.equal(lost.status, 1);
+  assert.equal(lost.stop.stop, "unreadable_after_action");
+  assert.match(lost.stop.error, /TIMEOUT/);
+  assert.equal(lost.stop.history.length, 1, "an action that ran is reported even when the screen cannot be read after it");
+  const delivered = lost.events.find(event => event.turn).turn;
+  assert.equal(delivered.ok, true);
+  assert.equal(delivered.changed, null);
+  assert.equal(lost.commands.filter(command => command.command === "click").length, 1);
 
   assert.equal(run("blocked").status, 1);
   assert.equal(run("done").status, 0);

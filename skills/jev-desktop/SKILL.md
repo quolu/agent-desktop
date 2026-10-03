@@ -87,6 +87,21 @@ A screen with more actionable elements than a choice can carry says so, in the
 request and in the turn it reports, and the policy is told to look inside a
 region rather than call the goal impossible.
 
+A read that was cut short is taken again. `agent-desktop snapshot` gives a read
+one budget, and a read that runs past it comes back as `TIMEOUT` or as a tree
+marked `complete: false`. The first read of an application that still has to
+switch its accessibility on is the usual case: a web view or a Mac Catalyst app
+that was just launched. Both entry points take that read up to three times, and
+the next one is faster because the application keeps the tree it built. A tree
+that is still incomplete after that is used as far as it goes and is marked, and
+so is a sheet or menu that could not be read in time and left only the window
+behind it: `run.mjs` reports `screen.incomplete: true`, `act.mjs` adds a note,
+and when the part that was read holds nothing to act on they say the screen was
+only partly read instead of calling it empty. A read that stayed incomplete is
+taken once from then on, until it comes back whole. A read that still fails
+stops the run. If that happens after an action, the action is still reported:
+the turn is printed and the run stops with `unreadable_after_action`.
+
 `--root @ref` starts inside a region when you already know which one. `--window-id <id>`
 reads one window when the app has several open and none is focused, such as a Settings window next to
 the main one while another app is in front. Every stop reports the window it read in `screen.window_id`.

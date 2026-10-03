@@ -71,7 +71,12 @@ export const run = async function* (
       const before = fingerprint(nodes);
       const space = actionSpace(nodes, { drillable: !state.root, typable: supply.available(), values });
       if (!space.elements.length) {
-        yield { stop: "nothing on this screen can be acted on", screen };
+        yield {
+          stop: screen.incomplete
+            ? "the screen was only partly read, and nothing in that part can be acted on"
+            : "nothing on this screen can be acted on",
+          screen,
+        };
         return;
       }
       const answers = (await decide(goal, screen, space, state.history, values)).answers;
@@ -160,10 +165,12 @@ export const run = async function* (
       try {
         after = "root" in outcome ? null : observe(app, state.root, windowId);
       } catch (error) {
-        if (!windowId || error.code !== "WINDOW_NOT_FOUND") throw error;
-        turn.changed = true;
+        const closed = Boolean(windowId) && error.code === "WINDOW_NOT_FOUND";
+        if (closed) turn.changed = true;
         yield { turn, screen };
-        yield { stop: "window_closed", screen, history: state.history };
+        yield closed
+          ? { stop: "window_closed", screen, history: state.history }
+          : { stop: "unreadable_after_action", screen, error: String(error.message ?? error), history: state.history };
         return;
       }
       turn.changed = "root" in outcome || fingerprint(after.nodes) !== before;

@@ -30,6 +30,45 @@ export const overlayRole = (tree) => {
   return found;
 };
 
+const READS = 3;
+
+/**
+ * A read stopped before it reached the whole tree. `agent-desktop snapshot`
+ * reports that as a timeout or as a tree marked `complete: false`.
+ */
+export const cut = (snap) => (snap.ok ? snap.data?.complete === false : snap.error?.code === "TIMEOUT");
+
+const stayedCut = new Set();
+
+/**
+ * The read most often cut is the first one of an application that still has to
+ * switch its accessibility on: it walks the tree, switches it on and walks
+ * again, while the application builds what the second walk is waiting for. What
+ * the application built stays built, so the read is taken again and starts
+ * warm.
+ *
+ * A tree can also stay incomplete for reasons another read does not change,
+ * such as a list that updates while it is being read. So the fullest result is
+ * returned for the caller to mark, a partial tree in preference to a later
+ * timeout, and a read named by `key` that stayed cut is taken once from then
+ * on, until it comes back whole.
+ */
+export const reread = (take, key = null) => {
+  let partial = null;
+  let snap = null;
+  for (let taken = 0; taken < READS; taken += 1) {
+    snap = take();
+    if (!cut(snap)) {
+      stayedCut.delete(key);
+      return snap;
+    }
+    if (snap.ok) partial = snap;
+    if (partial && stayedCut.has(key)) break;
+  }
+  if (partial && key !== null) stayedCut.add(key);
+  return partial ?? snap;
+};
+
 /**
  * The only elements withheld are ones no command can reach. Everything else is
  * offered: the docs are explicit that a Choice does better with the full list

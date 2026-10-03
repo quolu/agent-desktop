@@ -18,7 +18,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { collect, describe, label, offerable, overlayRole } from "./screen.mjs";
+import { collect, cut, describe, label, offerable, overlayRole, reread } from "./screen.mjs";
 import { NO_MATCH, resolveModel, typesafeApi, route } from "./policy.mjs";
 
 export { collect, describe, label, offerable, overlayRole, route };
@@ -222,13 +222,16 @@ const main = async (argv) => {
 
   const scope = windowId ? ["--app", app, "--window-id", windowId] : ["--app", app];
   const base = ["snapshot", ...scope, "-i", "--compact", "--include-bounds"];
-  let snap = run(bin, root ? [...base, "--root", root] : base);
+  let snap = reread(() => run(bin, root ? [...base, "--root", root] : base));
   if (!snap.ok) fail(`snapshot failed: ${snap.error?.code}`, { detail: snap.error?.message });
 
   const overlay = overlayRole(snap.data.tree);
+  let behind = false;
   if (overlay && !root) {
-    const surfaceSnap = run(bin, ["snapshot", ...scope, "--surface", overlay, "-i", "--compact", "--include-bounds"]);
+    const surfaceSnap = reread(() =>
+      run(bin, ["snapshot", ...scope, "--surface", overlay, "-i", "--compact", "--include-bounds"]));
     if (surfaceSnap.ok) snap = surfaceSnap;
+    else behind = cut(surfaceSnap);
   }
 
   const surface = {
@@ -237,8 +240,11 @@ const main = async (argv) => {
     window_id: snap.data.window?.id ?? windowId,
     overlay,
   };
+  const incomplete = cut(snap) || behind;
   let candidates = offerable(collect(snap.data.tree));
-  if (candidates.length === 0) fail("no actionable element on screen");
+  if (candidates.length === 0) {
+    fail(incomplete ? "the screen was only partly read, and no actionable element is in that part" : "no actionable element on screen");
+  }
 
   const truncated = candidates.length > MAX_OPTIONS;
   if (truncated) candidates = candidates.slice(0, MAX_OPTIONS);
@@ -297,6 +303,7 @@ const main = async (argv) => {
       corrected ? `command corrected to ${verb}: the element does not advertise ${answers.command}` : null,
       reranked ? "reranked over the top candidates after a close first pass" : null,
       truncated ? `screen has more than ${MAX_OPTIONS} elements; drill in with --root @ref` : null,
+      incomplete ? "the screen was only partly read; the element wanted may be in the part that is missing" : null,
     ].filter(Boolean),
   };
 

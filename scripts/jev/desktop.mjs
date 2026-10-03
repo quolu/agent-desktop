@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { collect, offerable, overlayRole } from "./screen.mjs";
+import { collect, cut, offerable, overlayRole, reread } from "./screen.mjs";
 import { ARGV } from "./policy.mjs";
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -52,27 +52,34 @@ export const stopCursor = () => cli("cursor-overlay", "disable");
  * holding thousands of elements costs the same first look as a panel holding
  * thirty. A region cut off by that shallow read still reports how much it holds,
  * which is what makes it worth drilling into. A sheet or menu owns the screen
- * while it is up, so it is read instead of the window behind it.
+ * while it is up, so it is read instead of the window behind it. A read cut
+ * short is taken again, and what is still missing after that marks the screen
+ * `incomplete`: a tree that stayed partial, or a sheet that could not be read
+ * in time and left only the window behind it.
  */
 export const observe = (app, root, windowId = null) => {
   const scope = windowId ? ["--app", app, "--window-id", windowId] : ["--app", app];
   const base = ["snapshot", ...scope, "-i", "--compact", "--include-bounds"];
   const unreadable = (what, error) => Object.assign(new Error(`${what} could not be read: ${error?.code}`),
     { code: error?.code ?? null });
-  let snap = root ? cli(...base, "--root", root) : cli(...base, "--skeleton");
+  const named = (what) => [app, windowId, what].join("\n");
+  let snap = reread(() => (root ? cli(...base, "--root", root) : cli(...base, "--skeleton")), named(root ?? "window"));
   if (!snap.ok && root) throw unreadable("that region", snap.error);
   if (!snap.ok && snap.error?.code !== "WINDOW_NOT_FOUND") snap = cli(...base, "--max-depth", "4");
   if (!snap.ok) throw unreadable("the screen", snap.error);
   const surface = root ? null : overlayRole(snap.data.tree);
+  let behind = false;
   if (surface) {
-    const scoped = cli("snapshot", ...scope, "--surface", surface, "-i", "--compact", "--include-bounds");
+    const scoped = reread(() => cli("snapshot", ...scope, "--surface", surface, "-i", "--compact", "--include-bounds"),
+      named(surface));
     if (scoped.ok) snap = scoped;
+    else behind = cut(scoped);
   }
   const nodes = offerable(collect(snap.data.tree));
   return {
     nodes,
     screen: { app, window: snap.data.window?.title ?? null, window_id: snap.data.window?.id ?? windowId,
-      surface: surface ?? "window", root },
+      surface: surface ?? "window", root, ...(cut(snap) || behind ? { incomplete: true } : {}) },
   };
 };
 
