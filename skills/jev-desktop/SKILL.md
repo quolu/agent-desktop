@@ -42,8 +42,12 @@ holding thirty. A region that was cut off reports how much it holds, and `DRILL`
 pins it as the root for later turns. `WIDEN` gives the whole window back.
 
 **`CHECK` and `UNCHECK` instead of a toggle.** Both are idempotent, so a box
-already in the wanted state stays there and the policy never reasons about the
-current one.
+already in the wanted state stays there. The turn retains native `steps`: a
+verified no-op reports `ok: true`, `delivery: "not_delivered"`, `changed: false`,
+and `steps: [{"label":"AlreadyInState","outcome":"skipped","verified":true}]`.
+Here `not_delivered` means no input was needed; it does not assert a failed
+state change. An unsatisfied state after attempted input reports an error.
+The step reason and the next observation distinguish these cases.
 
 **You supply the text.** Nothing here writes a value, so a run never puts a
 string on screen that you did not choose. Pass `--text` once per value and they

@@ -22,6 +22,10 @@ appendFileSync(process.env.JEV_TEST_LOG, JSON.stringify({command,args})+'\\n');
 const error = (code, retry='unsafe', delivery='delivery_uncertain') =>
   ({ok:false,error:{code,message:'試験の失敗',disposition:{retry,delivery}}});
 let result = {ok:true,data:{disposition:{delivery:'delivered_verified',retry:'unsafe'}}};
+if (command === 'uncheck' && mode === 'already_satisfied') result={ok:true,data:{
+  disposition:{delivery:'not_delivered',retry:'safe'},
+  steps:[{label:'AlreadyInState',outcome:'skipped',verified:true}]
+}};
 const clicked = () => require('node:fs').readFileSync(process.env.JEV_TEST_LOG,'utf8').includes('"command":"click"');
 const reads = () => require('node:fs').readFileSync(process.env.JEV_TEST_LOG,'utf8').split('"command":"snapshot"').length - 1;
 const cut = (children) => ({ok:true,data:{window:{title:'試験'},complete:false,truncated:true,nodes_observed:3,tree:{role:'window',children}}});
@@ -41,6 +45,9 @@ else if (command === 'snapshot') result = {ok:true,data:{window:{title:'試験'}
     {ref_id:'@s1:e1',role:'button',name:'試験ボタン',available_actions:['Click']},
     {ref_id:'@s1:e2',role:'textfield',name:'試験欄',value:'',available_actions:['SetValue']}
   ]}}};
+if (command === 'snapshot' && mode === 'already_satisfied') result={ok:true,data:{window:{title:'試験'},tree:{
+  role:'window',children:[{ref_id:'@s1:e1',role:'checkbox',name:'Public',value:'0',available_actions:['Toggle']}]
+}}};
 if (command === 'click' && mode === 'click_error') result=error('ACTION_FAILED');
 if (command === 'set-value') result= mode==='unsafe_type'
   ? error('TIMEOUT') : error('ACTION_NOT_SUPPORTED','safe','not_delivered');
@@ -50,7 +57,7 @@ if (command === 'clipboard-set' && mode==='clipboard_error' && args[0]==='試験
 if (command === 'get') result={ok:true,data:{value:mode==='paste_wrong'?'違う文字':'試験'}};
 console.log(JSON.stringify(result));
 `;
-for (const command of ["snapshot", "click", "set-value", "focus", "clipboard-get", "clipboard-set", "press", "get"]) {
+for (const command of ["snapshot", "click", "uncheck", "set-value", "focus", "clipboard-get", "clipboard-set", "press", "get"]) {
   writeFileSync(join(directory, command), fake);
 }
 writeFileSync(preload, `
@@ -58,7 +65,7 @@ let calls=0;
 globalThis.fetch=async (_url,options)=>{
   calls++;
   const body=JSON.parse(options.body), mode=process.env.JEV_TEST_MODE;
-  const operation=mode==='wait'?(calls<=3?'WAIT':'DONE'):mode==='done'||mode==='partly_read'||mode==='sheet_cut'||mode.startsWith('cold_')?'DONE':
+  const operation=mode==='already_satisfied'?(calls===1?'UNCHECK':'DONE'):mode==='wait'?(calls<=3?'WAIT':'DONE'):mode==='done'||mode==='partly_read'||mode==='sheet_cut'||mode.startsWith('cold_')?'DONE':
     mode==='blocked'?'BLOCKED':mode==='click_error'||mode==='window_closed'||mode==='unreadable_after'?'CLICK':mode==='paste_correct'&&calls>1?'DONE':'TYPE_TEXT';
   const answers={};
   for (const [id,question] of Object.entries(body.questions)) {
@@ -96,6 +103,15 @@ try {
   assert.equal(waited.status, 0);
   assert.equal(waited.stop.stop, "done");
   assert.equal(waited.events.filter(event => event.turn).length, 3);
+
+  const satisfied = run("already_satisfied");
+  assert.equal(satisfied.status, 0);
+  const noop = satisfied.events.find(event => event.turn).turn;
+  assert.equal(noop.ok, true);
+  assert.equal(noop.delivery, "not_delivered");
+  assert.equal(noop.changed, false);
+  assert.deepEqual(noop.steps, [{ label: "AlreadyInState", outcome: "skipped", verified: true }],
+    "a verified no-op retains its reason instead of resembling failed delivery");
 
   const failed = run("click_error");
   assert.equal(failed.status, 1);

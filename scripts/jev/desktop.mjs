@@ -149,10 +149,22 @@ export const execute = async (app, operation, node, text, clipboard, windowId = 
   if (operation === "WIDEN") return { ok: true, delivery: "looked", root: null };
   if (operation === "TYPE_TEXT") {
     const { route, result } = enterText(app, node, text, clipboard, windowId);
-    return { ok: result.ok, delivery: result.data?.disposition?.delivery ?? result.error?.disposition?.delivery ?? null,
-      error: result.error ?? null, route };
+    return { ...deliveryEvidence(result), route };
   }
   const result = cli(...ARGV[operation](node.ref_id));
-  return { ok: result.ok, delivery: result.data?.disposition?.delivery ?? result.error?.disposition?.delivery ?? null,
-    error: result.error ?? null };
+  return deliveryEvidence(result);
+};
+
+/** Preserve platform verification evidence even when a postcondition failure nests the executed action. */
+export const deliveryEvidence = (result) => {
+  const details = result.data?.details ?? result.error?.details ?? null;
+  const after = result.error?.details?.after_action;
+  return {
+    ok: result.ok,
+    delivery: result.data?.disposition?.delivery ?? result.error?.disposition?.delivery ?? null,
+    error: result.error ?? null,
+    steps: result.data?.steps ?? after?.steps ?? [],
+    post_state: result.data?.post_state ?? details?.post_state ?? after?.post_state ?? null,
+    details,
+  };
 };
