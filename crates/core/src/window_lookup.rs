@@ -71,6 +71,13 @@ pub(crate) fn select_surface_owner(
     Ok(candidates.swap_remove(best))
 }
 
+/// Orders an app's windows the way a surface owner is chosen: focused first,
+/// then visible, then the rest, each group in the order the platform listed.
+pub(crate) fn surface_owner_order(mut candidates: Vec<WindowInfo>) -> Vec<WindowInfo> {
+    candidates.sort_by_key(|window| (!window.state.is_focused, window.state.visible != Some(true)));
+    candidates
+}
+
 pub(crate) fn select_window(
     mut candidates: Vec<WindowInfo>,
     empty_error: crate::AdapterError,

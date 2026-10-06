@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { ask, buildRequest, collect, describe, label, offerable, overlayRole, readAnswers, reconcile, route, toArgv } from "./act.mjs";
-import { cut, reread } from "./screen.mjs";
 
 const S = "s8f3k2p9";
 const screen = collect({
@@ -115,64 +114,6 @@ assert.deepEqual(toArgv("hover", `@${S}:e3`, null), ["--headed", "hover", `@${S}
     for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
     Object.assign(process.env, saved);
   }
-}
-
-{
-  const full = { ok: true, data: { complete: true, tree: { role: "window" } } };
-  const partial = { ok: true, data: { complete: false, nodes_observed: 71, tree: { role: "window" } } };
-  const timeout = { ok: false, error: { code: "TIMEOUT" } };
-  const gone = { ok: false, error: { code: "WINDOW_NOT_FOUND" } };
-  const replay = (...results) => {
-    const taken = [];
-    return { taken, take: () => (taken.push(1), results[Math.min(taken.length, results.length) - 1]) };
-  };
-
-  const settled = replay(full);
-  assert.equal(reread(settled.take), full);
-  assert.equal(settled.taken.length, 1, "a read that finished is not taken again");
-
-  const unmarked = replay({ ok: true, data: { tree: { role: "window" } } });
-  assert.equal(cut(reread(unmarked.take)), false, "a read that does not report completeness is taken as whole");
-  assert.equal(unmarked.taken.length, 1);
-
-  const warmed = replay(partial, timeout, full);
-  assert.equal(reread(warmed.take), full, "a cut read is taken again until one finishes");
-  assert.equal(warmed.taken.length, 3);
-
-  const closed = replay(gone, full);
-  assert.equal(reread(closed.take), gone, "an error that another read cannot change is returned at once");
-  assert.equal(closed.taken.length, 1);
-
-  const stuck = replay(partial);
-  assert.equal(reread(stuck.take), partial, "a tree that stays cut is returned for the caller to mark");
-  assert.equal(cut(partial), true);
-  assert.equal(stuck.taken.length, 3);
-
-  const busy = replay(timeout);
-  assert.equal(reread(busy.take), timeout);
-  assert.equal(busy.taken.length, 3);
-
-  const lost = replay(partial, timeout, timeout);
-  assert.equal(reread(lost.take), partial, "a partial tree is not thrown away for a later timeout");
-  assert.equal(lost.taken.length, 3);
-
-  const known = replay(partial, partial, partial, partial, full, partial);
-  assert.equal(reread(known.take, "list"), partial);
-  assert.equal(known.taken.length, 3);
-  assert.equal(reread(known.take, "list"), partial);
-  assert.equal(known.taken.length, 4, "a read known to stay cut is taken once");
-  assert.equal(reread(known.take, "other"), full);
-  assert.equal(reread(known.take, "list"), partial);
-  assert.equal(known.taken.length, 6, "another read is not affected");
-  const slow = replay(partial, partial, partial, timeout, partial, full);
-  reread(slow.take, "slow");
-  assert.equal(reread(slow.take, "slow"), partial, "a timeout is still taken again for a read known to stay cut");
-  assert.equal(slow.taken.length, 5);
-  const healed = replay(partial, partial, partial, full, partial, full);
-  reread(healed.take, "page");
-  assert.equal(reread(healed.take, "page"), full);
-  assert.equal(reread(healed.take, "page"), full, "a read that came back whole is taken again when it is cut");
-  assert.equal(healed.taken.length, 6);
 }
 
 console.log("ok");

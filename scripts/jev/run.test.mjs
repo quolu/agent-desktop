@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { collect, offerable } from "./act.mjs";
 import { decide, rateRisk } from "./run.mjs";
-import { deliveryEvidence } from "./desktop.mjs";
 import {
   ARGV,
   OPS,
@@ -93,20 +92,6 @@ const space = actionSpace(screen());
     !("destructive" in request.questions),
     "risk is not asked beside the operation, where it would rate a step nobody picked",
   );
-  const turn = { operation: "UNCHECK", ok: true, delivery: "not_delivered", changed: false };
-  const evidence = [{ label: "AlreadyInState", outcome: "skipped", verified: true }];
-  const withEvidence = buildRequest("save the file", { app: "TextEdit", window: "Untitled" }, space,
-    [{ ...turn, steps: evidence, post_state: { value: "0" }, details: { verification_scope: "element_state" } }]);
-  assert.deepEqual(withEvidence.state.recent_actions, [turn],
-    "native step evidence is retained for callers without changing the policy's history input");
-  const failed = deliveryEvidence({ ok: false, error: { code: "ACTION_FAILED",
-    disposition: { delivery: "not_delivered" }, details: {
-      after_action: { steps: evidence }, post_state: { value: "1" }, postcondition_satisfied: false,
-    } } });
-  assert.deepEqual(failed.steps, evidence);
-  assert.deepEqual(failed.post_state, { value: "1" });
-  assert.equal(failed.details.postcondition_satisfied, false);
-  assert.equal(failed.ok, false, "a skipped step cannot override failed postcondition verification");
   for (const terminal of ["WAIT", "DONE", "BLOCKED"]) {
     assert.ok(terminal in request.questions.operation.criteria);
     assert.ok(!(`${terminal.toLowerCase()}_target` in request.questions), "a terminal operation has no target head");

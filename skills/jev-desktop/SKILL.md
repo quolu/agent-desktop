@@ -42,12 +42,8 @@ holding thirty. A region that was cut off reports how much it holds, and `DRILL`
 pins it as the root for later turns. `WIDEN` gives the whole window back.
 
 **`CHECK` and `UNCHECK` instead of a toggle.** Both are idempotent, so a box
-already in the wanted state stays there. The turn retains native `steps`: a
-verified no-op reports `ok: true`, `delivery: "not_delivered"`, `changed: false`,
-and `steps: [{"label":"AlreadyInState","outcome":"skipped","verified":true}]`.
-Here `not_delivered` means no input was needed; it does not assert a failed
-state change. An unsatisfied state after attempted input reports an error.
-The step reason and the next observation distinguish these cases.
+already in the wanted state stays there and the policy never reasons about the
+current one.
 
 **You supply the text.** Nothing here writes a value, so a run never puts a
 string on screen that you did not choose. Pass `--text` once per value and they
@@ -90,21 +86,6 @@ actions, after 80 model calls, or after three turns that changed nothing.
 A screen with more actionable elements than a choice can carry says so, in the
 request and in the turn it reports, and the policy is told to look inside a
 region rather than call the goal impossible.
-
-A read that was cut short is taken again. `agent-desktop snapshot` gives a read
-one budget, and a read that runs past it comes back as `TIMEOUT` or as a tree
-marked `complete: false`. The first read of an application that still has to
-switch its accessibility on is the usual case: a web view or a Mac Catalyst app
-that was just launched. Both entry points take that read up to three times, and
-the next one is faster because the application keeps the tree it built. A tree
-that is still incomplete after that is used as far as it goes and is marked, and
-so is a sheet or menu that could not be read in time and left only the window
-behind it: `run.mjs` reports `screen.incomplete: true`, `act.mjs` adds a note,
-and when the part that was read holds nothing to act on they say the screen was
-only partly read instead of calling it empty. A read that stayed incomplete is
-taken once from then on, until it comes back whole. A read that still fails
-stops the run. If that happens after an action, the action is still reported:
-the turn is printed and the run stops with `unreadable_after_action`.
 
 `--root @ref` starts inside a region when you already know which one. `--window-id <id>`
 reads one window when the app has several open and none is focused, such as a Settings window next to
@@ -243,7 +224,7 @@ is alpha and may change shape.
 
 `WAIT` in `run.mjs` pauses 250 ms before the screen is read again. A failed operation stops the run at once as `action_failed`, keeping the error code and delivery state, and is never repeated. The CLI exits 0 only when the run stops at `done`; every other stop exits 1.
 
-Text falls back from a direct value write to a paste only when the write reports that nothing was delivered and a retry is safe. A failed clipboard write is reported as the stop reason. After a paste the field is read back; if it does not hold the requested text the run stops with `TEXT_VERIFICATION_FAILED` and does not type again.
+Text falls back from a direct value write to a paste only when the write reports that nothing was delivered and a retry is safe. A failed clipboard write is reported as the stop reason. After a paste the field is read back; if it does not hold the requested text the run stops with `TEXT_VERIFICATION_FAILED` and does not type again. The read-back compares the exact string, so a field that normalizes text (trims, changes case or line endings) reports a failure even when the text landed; the read is retried until a short deadline before it fails.
 
 ```sh
 node scripts/jev/act.test.mjs

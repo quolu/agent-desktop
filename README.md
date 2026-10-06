@@ -463,21 +463,15 @@ snapshot → act → STALE_REF or AMBIGUOUS_TARGET? → wait/snapshot again → 
 
 | | macOS | Windows | Linux |
 |---|:---:|:---:|:---:|
-| Accessibility tree | **Yes** | Planned | Read-only (fork) |
+| Accessibility tree | **Yes** | Planned | **Read-only** |
 | Click / type / keyboard | **Yes** | Planned | Planned |
 | Mouse input | **Yes** | Planned | Planned |
 | Screenshot | **Yes** | Planned | Planned |
 | Clipboard | **Yes** | Planned | Planned |
-| App & window management | **Yes** | Planned | Planned |
+| App & window management | **Yes** | Planned | **Lists only** |
 | Notifications | **Yes** | Planned | Planned |
 
-**Linux (this fork, AT-SPI2 read path).** `list-apps`, `list-windows` and `snapshot` of a window work over AT-SPI2 on the D-Bus session bus (pure Rust, `zbus`; no libatspi). Everything else still returns `PLATFORM_NOT_SUPPORTED`, as do `snapshot --root` and non-window surfaces.
-
-- Requires the accessibility bus (`at-spi-bus-launcher`, on by default in GNOME). Without it every command explains how to enable it.
-- Chromium and Electron apps join the bus only when accessibility is requested; start them with `--force-renderer-accessibility` (or `ACCESSIBILITY_ENABLED=1`).
-- On Wayland, native GTK/Qt clients cannot know their screen position, so their windows and elements carry no `bounds`. Chromium (X11 or XWayland) reports real coordinates.
-- AT-SPI2 `ACTIVE` is per application, so on Wayland several windows can claim focus at once. `snapshot` without `--app` then reports the ambiguity with the candidates; pass `--app` or `--window-id`.
-- Elements without the AT-SPI2 `VISIBLE` state (hidden widgets toolkits keep in the tree) are left out of snapshots.
+This maintained fork retains the Linux AT-SPI2 adapter for `permissions`, `list-apps`, `list-windows`, and window snapshots. Linux actions, root snapshots, screenshots and input remain unsupported. Shared execution and Jev scripts use the upstream implementation.
 
 ## Development
 
