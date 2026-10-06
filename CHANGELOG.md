@@ -6,6 +6,27 @@
 
 * Preserve macOS applications with missing localized display names in the complete inventory, using their executable name or bundle identifier. Such applications no longer block unrelated app-scoped snapshots, window lists, and screenshots.
 
+## [0.9.5](https://github.com/quolu/agent-desktop/compare/v0.9.4...v0.9.5) (2026-10-06)
+
+
+### Features
+
+* **linux:** AT-SPI2でアプリ・ウィンドウ一覧とウィンドウのsnapshotを読む ([896d440](https://github.com/quolu/agent-desktop/commit/896d4405e781b52da38da0805db98220def28f9b))
+
+
+### Bug Fixes
+
+* **core:** give accessibility activation its own budget ([f92d941](https://github.com/quolu/agent-desktop/commit/f92d941b0d2a1bc4d55d14ae1dad79bba8de1d6b))
+* **core:** parse refmap floats exactly so bounds hashes survive a round trip ([d67729f](https://github.com/quolu/agent-desktop/commit/d67729f0569f2b25b044bf3f48271d7abdad7229))
+* **jev-desktop:** read the screen again when a read is cut short ([d8c5920](https://github.com/quolu/agent-desktop/commit/d8c59207329a064bfc6a8d252eb0a4e4d91eb3d3))
+* **jev-desktop:** select one window of an app with --window-id ([a9e45ff](https://github.com/quolu/agent-desktop/commit/a9e45ff7a469179f6c0ec64b28e64166b424a289))
+* **jev-desktop:** 操作の失敗で止まり、WAITで待ち、貼り付けを確かめる ([f8c5beb](https://github.com/quolu/agent-desktop/commit/f8c5beb91e40010922548e992b0c081ee4c8be19))
+* **jev:** retain AlreadyInState verification in execution logs ([d877185](https://github.com/quolu/agent-desktop/commit/d877185b5faf0a9db3aafba3e7c7ce4f8be35499))
+* **macos:** accept punctuation keys in press combos ([19518b2](https://github.com/quolu/agent-desktop/commit/19518b24deefa310552daf5d91942f179cf91bc3))
+* **macos:** fall back to pressing when a checkbox ignores an accepted AXValue write ([f7a1459](https://github.com/quolu/agent-desktop/commit/f7a1459c01eca9fd4ddb141eada937178b1a9369))
+* **macos:** 無効なAppKit PIDでウィンドウ列挙を止めない ([992e622](https://github.com/quolu/agent-desktop/commit/992e62256ad109f7fbb27698f98aa8b48e4c4daf))
+* preserve macOS apps without localized names ([0b9a18b](https://github.com/quolu/agent-desktop/commit/0b9a18ba4f46a4be19a17ef78db5e6405541d7b5))
+
 ## [0.9.4](https://github.com/lahfir/agent-desktop/compare/v0.9.3...v0.9.4) (2026-09-23)
 
 
