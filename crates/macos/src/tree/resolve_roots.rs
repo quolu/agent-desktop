@@ -22,7 +22,7 @@ pub(super) fn candidate_roots(
     let application = element_for_pid(pid);
     if entry.source.source_surface != SnapshotSurface::Window {
         verify_source_application(&application, entry, context)?;
-        return source_surface_scoped_roots(entry, deadline);
+        return source_surface_scoped_roots(&application, entry, context);
     }
     if source_window_scope_required(entry) && entry.source.source_window_id.is_some() {
         return source_window_scoped_roots(&application, entry, context);
@@ -63,11 +63,29 @@ pub(super) fn candidate_roots(
 
 #[cfg(target_os = "macos")]
 fn source_surface_scoped_roots(
+    application: &AXElement,
     entry: &RefEntry,
-    deadline: std::time::Instant,
+    context: &mut ResolveReadContext,
 ) -> Result<CandidateRoots, AdapterError> {
+    let deadline = context.deadline;
     let pid = crate::system::process_identity::to_pid_t(entry.process.pid)?;
     let root = match entry.source.source_surface {
+        SnapshotSurface::Sheet | SnapshotSurface::Popover | SnapshotSurface::Alert
+            if entry.source.source_window_id.is_some() =>
+        {
+            match source_window_scoped_roots(application, entry, context)?
+                .roots
+                .into_iter()
+                .next()
+            {
+                Some(window) => super::surfaces::surface_in_window(
+                    &window,
+                    entry.source.source_surface,
+                    deadline,
+                )?,
+                None => None,
+            }
+        }
         SnapshotSurface::Focused => super::surfaces::focused_surface_for_pid(pid, deadline)?,
         SnapshotSurface::Menu => super::surfaces::menu_element_for_pid(pid, deadline)?,
         SnapshotSurface::Menubar => super::surfaces::menubar_for_pid(pid, deadline)?,

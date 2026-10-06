@@ -37,14 +37,11 @@ pub fn build(
     window_id: Option<&str>,
     deadline: crate::Deadline,
 ) -> Result<SnapshotResult, AppError> {
-    let window = resolve_window_for_surface(adapter, app_name, window_id, opts.surface, deadline)?;
+    let windows = surface_windows(adapter, app_name, window_id, opts.surface, deadline)?;
     let observation_options = opts.with_ref_identity_bounds();
-    let (raw_tree, complete, nodes_observed) = crate::renderer_accessibility::observe_tree(
-        adapter,
-        ObservationRoot::Window(&window),
-        &ObservationRequest::snapshot(&observation_options, deadline).validate()?,
-    )?
-    .into_accessibility_tree_partial()?;
+    let request = ObservationRequest::snapshot(&observation_options, deadline).validate()?;
+    let (window, observed) = observe_first_owner(adapter, windows, &request)?;
+    let (raw_tree, complete, nodes_observed) = observed.into_accessibility_tree_partial()?;
 
     let mut refmap = RefMap::new();
     let config = RefAllocConfig {
@@ -104,6 +101,61 @@ pub(crate) fn resolve_window_for_surface(
             ),
         ),
     )
+}
+
+fn surface_windows(
+    adapter: &dyn PlatformAdapter,
+    app_name: Option<&str>,
+    window_id: Option<&str>,
+    surface: crate::SnapshotSurface,
+    deadline: crate::Deadline,
+) -> Result<Vec<WindowInfo>, AppError> {
+    use crate::SnapshotSurface::{Alert, Popover, Sheet};
+    if window_id.is_none() && matches!(surface, Sheet | Popover | Alert) {
+        let mut windows = match app_name {
+            Some(_) => windows_for_app(adapter, app_name, deadline)?,
+            None => frontmost_process_windows(adapter, surface, deadline)?,
+        };
+        windows.retain(|window| window.state.accessible);
+        let windows = crate::window_lookup::surface_owner_order(windows);
+        if !windows.is_empty() {
+            return Ok(windows);
+        }
+    }
+    Ok(vec![resolve_window_for_surface(
+        adapter, app_name, window_id, surface, deadline,
+    )?])
+}
+
+fn frontmost_process_windows(
+    adapter: &dyn PlatformAdapter,
+    surface: crate::SnapshotSurface,
+    deadline: crate::Deadline,
+) -> Result<Vec<WindowInfo>, AppError> {
+    let owner = resolve_window_for_surface(adapter, None, None, surface, deadline)?;
+    let mut windows = windows_for_app(adapter, Some(owner.app.as_str()), deadline)?;
+    windows.retain(|window| window.pid == owner.pid);
+    if windows.is_empty() {
+        windows.push(owner);
+    }
+    Ok(windows)
+}
+
+fn observe_first_owner(
+    adapter: &dyn PlatformAdapter,
+    windows: Vec<WindowInfo>,
+    request: &ObservationRequest,
+) -> Result<(WindowInfo, crate::live_locator::ObservedTree), AppError> {
+    let mut windows = windows.into_iter().peekable();
+    while let Some(window) = windows.next() {
+        let root = ObservationRoot::Window(&window);
+        match crate::renderer_accessibility::observe_tree(adapter, root, request) {
+            Err(AppError::Adapter(error))
+                if error.code == crate::ErrorCode::ElementNotFound && windows.peek().is_some() => {}
+            result => return result.map(|observed| (window, observed)),
+        }
+    }
+    Err(crate::AdapterError::new(crate::ErrorCode::WindowNotFound, "No window to observe").into())
 }
 
 fn windows_for_app(

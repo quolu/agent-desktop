@@ -90,15 +90,19 @@ fn workspace_snapshot_error(result: &BytesResult) -> AdapterError {
                 .into_owned(),
         )
     };
-    bridge_error("workspace_snapshot", result.status, false).with_details(serde_json::json!({
+    let mut details = serde_json::json!({
         "kind": "appkit_bridge",
         "operation": "workspace_snapshot",
         "status": result.status,
         "failure_field": field,
-        "failure_index": result.failure_index,
-        "failure_pid": result.failure_pid,
+        "failure_index": (result.failure_index >= 0).then_some(result.failure_index),
+        "failure_pid": (result.failure_pid > 0).then_some(result.failure_pid),
         "retryable": true,
-    }))
+    });
+    if let Some(fields) = details.as_object_mut() {
+        fields.retain(|_, value| !value.is_null());
+    }
+    bridge_error("workspace_snapshot", result.status, false).with_details(details)
 }
 
 #[cfg(target_os = "macos")]
@@ -235,9 +239,32 @@ mod tests {
         };
 
         let details = workspace_snapshot_error(&result).details.unwrap();
+        assert_eq!(details["kind"], "appkit_bridge");
+        assert_eq!(details["operation"], "workspace_snapshot");
+        assert_eq!(details["status"], 2);
         assert_eq!(details["failure_field"], "application_name");
         assert_eq!(details["failure_index"], 7);
         assert_eq!(details["failure_pid"], 123);
+        assert_eq!(details["retryable"], true);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn workspace_snapshot_failure_without_context_omits_the_unset_fields() {
+        let result = BytesResult {
+            status: 1,
+            failure_field: std::ptr::null(),
+            failure_index: -1,
+            failure_pid: 0,
+            bytes: std::ptr::null_mut(),
+            length: 0,
+        };
+
+        let details = workspace_snapshot_error(&result).details.unwrap();
+        for key in ["failure_field", "failure_index", "failure_pid"] {
+            assert!(details.get(key).is_none(), "{key} is omitted, not null");
+        }
+        assert_eq!(details["status"], 1);
     }
 
     #[cfg(target_os = "macos")]

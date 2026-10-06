@@ -55,6 +55,14 @@ export const decide = (goal, screen, space, history, values) =>
 export const rateRisk = (goal, screen, operation, node, values) =>
   post(typesafeApi(), process.env.TYPESAFE_API_KEY, riskRequest(goal, screen, operation, node, { values }));
 
+const WINDOW_STOPS = {
+  WINDOW_NOT_FOUND: "window_closed",
+  SURFACE_OUTSIDE_WINDOW: "surface_outside_window",
+  ROOT_OUTSIDE_WINDOW: "root_outside_window",
+};
+
+const windowStop = (error, windowId) => (windowId ? WINDOW_STOPS[error.code] ?? null : null);
+
 export const run = async function* (
   goal,
   app,
@@ -66,17 +74,23 @@ export const run = async function* (
   const clipboard = clipboardGuard();
   const state = { steps: 0, calls: 0, history: [], operation: null, root };
   try {
+    let last = null;
     for (;;) {
-      const { nodes, screen } = observe(app, state.root, windowId);
+      let seen;
+      try {
+        seen = observe(app, state.root, windowId);
+      } catch (error) {
+        const stop = windowStop(error, windowId);
+        if (!stop) throw error;
+        yield { stop, screen: last, history: state.history };
+        return;
+      }
+      const { nodes, screen } = seen;
+      last = screen;
       const before = fingerprint(nodes);
       const space = actionSpace(nodes, { drillable: !state.root, typable: supply.available(), values });
       if (!space.elements.length) {
-        yield {
-          stop: screen.incomplete
-            ? "the screen was only partly read, and nothing in that part can be acted on"
-            : "nothing on this screen can be acted on",
-          screen,
-        };
+        yield { stop: "nothing on this screen can be acted on", screen };
         return;
       }
       const answers = (await decide(goal, screen, space, state.history, values)).answers;
@@ -138,7 +152,7 @@ export const run = async function* (
           return;
         }
       }
-      const outcome = await execute(app, state.operation, node, value, clipboard, windowId);
+      const outcome = await execute({ app, windowId }, state.operation, node, value, clipboard);
       state.steps += 1;
       const turn = {
         step: state.steps,
@@ -149,9 +163,6 @@ export const run = async function* (
         confidence,
         ok: outcome.ok,
         delivery: outcome.delivery,
-        steps: outcome.steps ?? [],
-        post_state: outcome.post_state ?? null,
-        details: outcome.details ?? null,
         error: outcome.error ?? null,
         route: outcome.route ?? null,
         truncated: space.truncated,
@@ -168,12 +179,11 @@ export const run = async function* (
       try {
         after = "root" in outcome ? null : observe(app, state.root, windowId);
       } catch (error) {
-        const closed = Boolean(windowId) && error.code === "WINDOW_NOT_FOUND";
-        if (closed) turn.changed = true;
+        const stop = windowStop(error, windowId);
+        if (!stop) throw error;
+        turn.changed = true;
         yield { turn, screen };
-        yield closed
-          ? { stop: "window_closed", screen, history: state.history }
-          : { stop: "unreadable_after_action", screen, error: String(error.message ?? error), history: state.history };
+        yield { stop, screen, history: state.history };
         return;
       }
       turn.changed = "root" in outcome || fingerprint(after.nodes) !== before;
@@ -193,7 +203,13 @@ export const run = async function* (
 const main = async (argv) => {
   const flag = (name) => {
     const at = argv.indexOf(`--${name}`);
-    return at === -1 ? null : argv[at + 1];
+    if (at === -1) return null;
+    const value = argv[at + 1];
+    if (value === undefined || value.startsWith("--")) {
+      console.error(`--${name} needs a value`);
+      process.exit(2);
+    }
+    return value;
   };
   const app = flag("app");
   const root = flag("root");
