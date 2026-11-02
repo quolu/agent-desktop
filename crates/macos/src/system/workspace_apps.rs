@@ -182,11 +182,7 @@ fn apps_from_json_with(
         }
         let process_instance = match resolve(app.pid) {
             Ok(Some(instance)) => instance,
-            Ok(None) => {
-                return Err(inventory_error(
-                    "Selected application exited during inventory",
-                ));
-            }
+            Ok(None) => continue,
             Err(error)
                 if skip_cross_uid
                     && crate::system::process_apps::is_cross_uid_identity_error(&error) =>
@@ -336,6 +332,10 @@ fn inventory_error(message: &str) -> AdapterError {
             "retryable": true,
         }))
 }
+
+#[cfg(test)]
+#[path = "workspace_apps_exited_tests.rs"]
+mod exited_tests;
 
 #[cfg(test)]
 #[path = "workspace_apps_pid_tests.rs"]

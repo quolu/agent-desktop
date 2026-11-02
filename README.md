@@ -74,7 +74,7 @@ cp target/release/agent-desktop /usr/local/bin/
 
 Requires Rust 1.89+ and macOS 13.0+.
 
-On macOS, application names use AppKit's localized display name. If it is unavailable, the inventory uses the executable name, then the bundle identifier, while retaining the application's process identity.
+On macOS, application names use AppKit's localized display name. If it is unavailable, the inventory uses the executable name, then the bundle identifier, while retaining the application's process identity. Workspace entries whose processes have exited are excluded from the running application inventory.
 
 ### Permissions
 
